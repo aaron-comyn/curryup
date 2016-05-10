@@ -20,7 +20,7 @@ module Configuration =
 [<AutoOpen>] 
 module private Shared =
 
-    let instance (m:MethodBase) = (not <| m.IsStatic)
+    let instance (m:MethodBase) = not m.IsStatic
     let isVoid (m:MethodBase) = (m :?> MethodInfo).ReturnType = typeof<Void>
     let iff b v = if b(v) then Some v else None 
     let (|SourceFile|_|)     = iff (fun (f:string) -> f.EndsWith(".fs") || f.EndsWith(".fsx"))
