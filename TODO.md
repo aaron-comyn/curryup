@@ -1,19 +1,16 @@
-## CurryUp
-
+## CurryUp Tasks
 
 
 
 ### Further Work
 
-TODO: odd error on call gen for Sbff PoC: ... columns:System.Collections.Generic.IEnumerable`1[[System.String, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089]]
 
 TODO: generic constraints not translating 100% (see overloads of System.Type's "GetType" method)
 
 TODO: Create constructor wrappers (ie Dictionary.New' 1 2 3 4) - need generic type constraints (especially for 'equality' and 'comparison')
 
-TODO: Getting REF parameter calls on byte arrays that may, or may not, be valid....
-
 TODO: TryGetBuffer on System.IO.MemoryStream comes back as a public method but it is unavailable...
 
-TODO: Generic names conflict -- if a  namespace has Class<T> and Class<T,U> they both get modules called "Class"
+TODO: Generic module names conflict -- if a  namespace has Class<T> and Class<T,U> they both get modules called "Class"
 
+TODO: Getting REF parameter calls on byte arrays that may, or may not, be valid....

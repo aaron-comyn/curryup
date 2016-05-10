@@ -25,7 +25,7 @@ module private Shared =
     let iff b v = if b(v) then Some v else None 
     let (|SourceFile|_|)     = iff (fun (f:string) -> f.EndsWith(".fs") || f.EndsWith(".fsx"))
     let (|Library|_|)        = iff (fun (d:string) -> d.EndsWith(".dll"))
-    let (|IsOutParam|_|)     = iff (fun (p:ParameterInfo) -> p.IsOut && not (p.IsIn))
+    let (|IsRefParam|_|)     = iff (fun (p:ParameterInfo) -> p.ParameterType.IsByRef)
     let (|IsGenericParam|_|) = iff (fun (p:ParameterInfo) -> p.ParameterType.IsGenericType)
     let (|IsStaticProp|_|)   = iff (fun (p:PropertyInfo) -> p.GetGetMethod().IsStatic )
     let (|IsConstructor|_|)  = iff (fun (m:MethodBase) -> m.MemberType = MemberTypes.Constructor)
@@ -51,7 +51,7 @@ module private Shared =
     let naughtyNames = [| "val"; "yield"; "use"; "type"; "to"; "then"; "select"; "rec"; 
                         "open"; "or"; "namespace"; "module"; "match"; "inline"; "inherit";
                         "function"; "func"; "params"; "end"; "done"; "begin"; "assert"; 
-                        "and"; "or"; "not"; |]
+                        "and"; "or"; "not"; "with" |]
     let isNaughty name = naughtyNames |> Array .contains name
     let cleanName name = if name |> isNaughty then tick name else name
 
@@ -176,7 +176,7 @@ module private Generate =
         let typeName (p:ParameterInfo) = p.ParameterType |> fullTypeName |> safeName
         let name (p:ParameterInfo) = p.Name |> cleanName
         let call = function
-            | IsOutParam p -> sprintf "ref(%s)" (p |> name)
+            | IsRefParam p -> sprintf "ref(%s)" (p |> name)
             | p            -> p |> name
         let argumentName p = sprintf "(%s:%s)" (p |> name) (p |> typeName)
         let map (map:ParameterInfo -> string) concatWith (m:MethodBase) =  
