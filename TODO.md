@@ -13,3 +13,7 @@ TODO: Create constructor wrappers (ie Dictionary.New' 1 2 3 4) - need generic ty
 
 TODO: Getting REF parameter calls on byte arrays that may, or may not, be valid....
 
+TODO: TryGetBuffer on System.IO.MemoryStream comes back as a public method but it is unavailable...
+
+TODO: Generic names conflict -- if a  namespace has Class<T> and Class<T,U> they both get modules called "Class"
+

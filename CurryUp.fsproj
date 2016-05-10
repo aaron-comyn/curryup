@@ -45,7 +45,8 @@
     <Compile Include="AssemblyInfo.fs" />
     <None Include="TODO.md" />
     <None Include="curryup.fsx" />
-    <None Include="exampleUsage.fsx" />
+    <None Include="example.fsx" />
+    <None Include="scratch.fsx" />
     <Compile Include="testoutput.fsx" />
     <None Include="README.md" />
     <None Include="LICENSE.md" />

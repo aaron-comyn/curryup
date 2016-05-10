@@ -41,15 +41,17 @@ module private Shared =
     let fmt format = sprintf format
     let trimTo (char:string) (input:string) = if input.Contains(char) then input.Substring(0, input.IndexOf(char)) else input
     let kill (char:string) (input:string) = input.Replace(char, "")
+    let replace (char:string) (replaceWith:string) (input:string) = input.Replace(char, replaceWith)
     let trimGeneric = trimTo "`"
     let tickEscape s = "'" + s
     let tick s = s + "'"
-    let safeChars = kill "&" >> kill "*"
+    let safeName = (kill "&" >> kill "*") >> replace "+" "."
     let lcaseFirstLetter = function | "" -> "" | s -> s.Substring(0,1).ToLower() + s.Substring(1)
     let methName = function | IsConstructor _ -> "new" | m -> m.Name |> lcaseFirstLetter
     let naughtyNames = [| "val"; "yield"; "use"; "type"; "to"; "then"; "select"; "rec"; 
                         "open"; "or"; "namespace"; "module"; "match"; "inline"; "inherit";
-                        "function"; "func"; "params"; "end"; "done"; "begin"; "assert"; |]
+                        "function"; "func"; "params"; "end"; "done"; "begin"; "assert"; 
+                        "and"; "or"; "not"; |]
     let isNaughty name = naughtyNames |> Array .contains name
     let cleanName name = if name |> isNaughty then tick name else name
 
@@ -116,7 +118,7 @@ module private Generate =
             sb.ToString()
         let (++) x y = x + y
         let name (t:Type) = t.Name
-        let safeName (t:Type) = sprintf "%s.%s" t.Namespace t.Name
+        
 
     [<AutoOpen>]
     module private generic =
@@ -142,15 +144,16 @@ module private Generate =
     [<AutoOpen>]
     module private type' =
 
+        let safeTypeName (t:Type) = sprintf "%s.%s" t.Namespace t.Name
         let fullname = function
             | IsGeneric t -> t |> generic.typeFullName
             | t -> t.FullName
         let name  = function
             | IsGeneric t -> t.Name |> trimGeneric
             | t -> t.Name        
-        let isEquatable (t:Type) = (t |> safeName) = "System.Collections.Generic.IEqualityComparer`1"
-        let nameOfGenericParam t = t |> (safeName >> generic.typeNameWithContraints t)
-        let nameOfTypeParam = name >> (safeChars >> tickEscape)
+        let isEquatable (t:Type) = (t |> safeTypeName) = "System.Collections.Generic.IEqualityComparer`1"
+        let nameOfGenericParam t = t |> (safeTypeName >> generic.typeNameWithContraints t)
+        let nameOfTypeParam = name >> (safeName >> tickEscape)
         let fullTypeName = function 
             | HasGenericName t -> 
                 match t with
@@ -170,7 +173,7 @@ module private Generate =
     [<AutoOpen>]
     module private param' =
           
-        let typeName (p:ParameterInfo) = p.ParameterType |> fullTypeName |> safeChars
+        let typeName (p:ParameterInfo) = p.ParameterType |> fullTypeName |> safeName
         let name (p:ParameterInfo) = p.Name |> cleanName
         let call = function
             | IsOutParam p -> sprintf "ref(%s)" (p |> name)
