@@ -261,7 +261,7 @@ module Curry =
             | Library path -> 
                 query { for t in Assembly.LoadFrom(path).GetTypes() do
                         groupBy t.Namespace into g
-                        select (if g.Key = null then "NO_NAMESPACE" else g.Key) } |> Seq.toList
+                        select g.Key } |> Seq.toList
             | from' -> [ from' ]
         let generate config = 
             let generation = Generate.namespace' config
