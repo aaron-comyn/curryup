@@ -119,7 +119,7 @@ From an F# script:
 		{ Curry.DefaultConfig with 
 			  From = "System.Collections.Generic"
 			  To   = "test.fsx"
-			  MethodOverload   = fun name -> name + "'"
+			  NameOverload     = fun name -> name + "'"
 			  CurriedNamespace = fun namespace' -> namespace' + ".Curried" }
 	Curry.up' config
 ```
