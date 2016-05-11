@@ -5,6 +5,7 @@ open System
 open System.Reflection
 open System.Text
 
+
 [<AutoOpen>] 
 module Configuration =
 
@@ -13,12 +14,12 @@ module Configuration =
     type Config = 
         { From             : NamespaceTypeOrLibrary 
           To               : Sourcefile
-          MethodOverload   : string -> string
+          NameOverload     : string -> string
           CurriedNamespace : string -> string }
 
 
 [<AutoOpen>] 
-module private Shared =
+module Shared =
 
     let instance (m:MethodBase) = not m.IsStatic
     let isVoid (m:MethodBase) = (m :?> MethodInfo).ReturnType = typeof<Void>
@@ -47,6 +48,9 @@ module private Shared =
     let tick s = s + "'"
     let safeName = (kill "&" >> kill "*") >> replace "+" "."
     let lcaseFirstLetter = function | "" -> "" | s -> s.Substring(0,1).ToLower() + s.Substring(1)
+    let safeTypeName (t:Type) = sprintf "%s.%s" t.Namespace t.Name
+    let nonGenericName type' = (type':Type).Name |> trimGeneric
+    let fullName type' = (type':Type).FullName
     let methName = function | IsConstructor _ -> "new" | m -> m.Name |> lcaseFirstLetter
     let naughtyNames = [| "val"; "yield"; "use"; "type"; "to"; "then"; "select"; "rec"; 
                         "open"; "or"; "namespace"; "module"; "match"; "inline"; "inherit";
@@ -54,25 +58,13 @@ module private Shared =
                         "and"; "or"; "not"; "with" |]
     let isNaughty name = naughtyNames |> Array .contains name
     let cleanName name = if name |> isNaughty then tick name else name
-
-
-module private Namespace =
-    
-    [<AutoOpen>] 
-    module private shh =
-        let assemblies () = AppDomain.CurrentDomain.GetAssemblies()
-        let isIn namespace' type' = (type':Type).IsClass && type'.IsPublic && not (type'.IsAbstract) && type'.Namespace = namespace'
-        let isTypeName namespace' type' = (type':Type).FullName = namespace'
-        let matches namespace' type' = type' |> isIn namespace' || type' |> isTypeName namespace'
-        let forNamespace namespace' = Seq.filter (namespace' |> matches)
-        let types' ass = (ass:Assembly).GetTypes()
-        let typesIn namespace' = types' >> forNamespace namespace'
-        let findTypesIn namespace' = Seq.collect <| typesIn namespace'
-        let name type' = (type':Type).FullName
-        let findNames = Seq.map name >> Seq.toList
-        
-    let types namespace' = assemblies() |> findTypesIn namespace'
-    let typeNames namespace' = namespace' |> (types >> findNames)
+    let overloadName escapeName (prevOrig,prevName) name = 
+        if name = prevOrig then prevName |> escapeName  else name |> cleanName
+    let nameOverloads (escape:string -> string) (getName:'a -> string) (prev,acc) (element:'a) =
+        let origName = element |> getName
+        let finalName = overloadName escape prev (element |> getName)
+        ((origName, finalName), acc @ [(finalName, element)])
+    let overloadAcc = (("",""), [])
 
 
 module private Type' =  
@@ -89,21 +81,44 @@ module private Type' =
         let isMethod = not << isGetterOrSetter
         let noProps = List.filter isMethod
         let toMethodBase = Seq.cast<MethodBase>
-        let typeMethods (t:Type) = t|> (getMethods >> toMethodBase)
+        let typeMethods = getMethods >> toMethodBase
         let sortByName = Seq.sortBy methName >> Seq.toList
-        let allMethods (t:Type) = t|> (typeMethods >> sortByName)
-        let methods (t:Type) = t|> (allMethods >> noProps)
-        let overload escape (prevOrig,prevName) name = if name = prevOrig then escape prevName else name |> cleanName
-        let makeOverloads escape (prev,acc)  meth =
-            let name, finalName = meth |> methName, overload escape prev (meth |> methName)
-            ((name, finalName), acc @ [(finalName, meth)])
-        let overloadAcc = (("",""), [])
+        let allMethods = typeMethods >> sortByName
+        let methods = allMethods >> noProps
         let customEscape escape (methods: MethodBase list) =
-            methods |> List.fold (makeOverloads escape) overloadAcc |> snd
-        let escapeNames (config:Config) = customEscape config.MethodOverload
+            let overload = nameOverloads escape methName
+            methods |> List.fold overload overloadAcc |> snd
+        let escapeNames (config:Config) = customEscape config.NameOverload
 
     let methods (config:Config) t = t |> (methods >> escapeNames config)
     let constructors (t:Type) = t.GetConstructors()
+
+
+module private Namespace =
+    
+    [<AutoOpen>] 
+    module private shh =
+        let assemblies () = AppDomain.CurrentDomain.GetAssemblies()
+        let isIn namespace' type' = (type':Type).IsClass && type'.IsPublic && not (type'.IsAbstract) && type'.Namespace = namespace'
+        let isTypeName namespace' type' = (type':Type).FullName = namespace'
+        let matches namespace' type' = type' |> isIn namespace' || type' |> isTypeName namespace'
+        let forNamespace namespace' = Seq.filter (namespace' |> matches)
+        let types' ass = (ass:Assembly).GetTypes()
+        let typesIn namespace' = types' >> forNamespace namespace'
+        let findTypesIn namespace' = Seq.collect <| typesIn namespace'
+        let findNames = Seq.map fullName >> Seq.toList
+        let genericArgs (type':Type) : (string * int) =
+            let genericArgCount = function
+                | IsGeneric t -> t.GetGenericTypeDefinition().GetGenericArguments().Length
+                | _ ->  0
+            (type' |> nonGenericName, type' |> genericArgCount)
+        let wrappedNamespaces (escape:string -> string) (types : Type seq) =
+            let overload = nameOverloads escape (fun t -> (t:Type).Name |> trimGeneric)
+            types |> Seq.sortBy genericArgs |> Seq.fold overload overloadAcc |> snd
+            
+    let types namespace' = assemblies() |> findTypesIn namespace'
+    let overloadedTypes (config:Config) namespace' = namespace' |> (types >> wrappedNamespaces config.NameOverload)
+    let typeNames namespace' = namespace' |> (types >> findNames)
 
 
 module private Generate =
@@ -119,7 +134,6 @@ module private Generate =
         let (++) x y = x + y
         let name (t:Type) = t.Name
         
-
     [<AutoOpen>]
     module private generic =
 
@@ -142,9 +156,8 @@ module private Generate =
         let typeFullName t = typeName t t.FullName
 
     [<AutoOpen>]
-    module private type' =
-
-        let safeTypeName (t:Type) = sprintf "%s.%s" t.Namespace t.Name
+    module private type' =        
+        
         let fullname = function
             | IsGeneric t -> t |> generic.typeFullName
             | t -> t.FullName
@@ -199,7 +212,6 @@ module private Generate =
             | _               -> t |> curriedCall
         let paramsSpace = function HasParams _ -> " " | _ -> ""
         let methodReturn = function IsInstanceVoid _ -> "; this" | _ -> ""
-
         let methodDeclaration t write ((name, m):string * MethodBase) =
                 let call, instName = m |> memberCall t
                 let sig'    = fmt "    let %s " name
@@ -210,8 +222,8 @@ module private Generate =
 
                 sig' ++ params' ++ eq ++ call ++ ref' ++ args ||> write
 
-        let curried (config:Config) (t:Type) write =
-            fmt "/// Autogenerated curry-wrapper for %s\r\nmodule %s =" (t |> type'.fullname) (t |> type'.name) ||> write
+        let curried (config:Config) (moduleName, t:Type) write =
+            fmt "/// Autogenerated curry-wrapper for %s\r\nmodule %s =" (t |> type'.fullname) moduleName ||> write
             let writeMethods = methodDeclaration t write
             t |> Type'.methods config |> List.map writeMethods |> ignore
             sprintf "" ||> write
@@ -225,12 +237,12 @@ module private Generate =
             let header namespace' =
                 sprintf "namespace %s\r\n\r\n" (namespace' |> trimGeneric |> config.CurriedNamespace) ||> write
                 namespace'
-            let types = Namespace.types
+            let types namespace' = Namespace.overloadedTypes config namespace'
             let bodies types = 
                 for t in types do curried config t write;
                 types
-            let patterns types = for t in types do activePatterns t write
-
+            let patterns types = for (moduleName, type') in types do activePatterns type' write
+           // (header >> types)
             namespace' |> (header >> types >> bodies >> patterns) 
 
     let namespace' config = namespaceModule config >> write
@@ -243,7 +255,7 @@ module Curry =
     let DefaultConfig = 
         { From = "System.Collections.Generic" 
           To   = "stdout" 
-          MethodOverload   = fun name -> name + "'"
+          NameOverload   = fun name -> name + "'"
           CurriedNamespace = fun namespace' -> namespace' + ".Curried" }
 
     [<AutoOpen>]
