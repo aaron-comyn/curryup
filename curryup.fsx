@@ -24,8 +24,9 @@ module Shared =
     let instance (m:MethodBase) = not m.IsStatic
     let isVoid (m:MethodBase) = (m :?> MethodInfo).ReturnType = typeof<Void>
     let iff b v = if b(v) then Some v else None 
-    let (|SourceFile|_|)     = iff (fun (f:string) -> f.EndsWith(".fs") || f.EndsWith(".fsx"))
-    let (|Library|_|)        = iff (fun (d:string) -> d.EndsWith(".dll"))
+    let (|SourceFile|_|)     = iff (fun (f:string) -> IO.Path.GetExtension(f).ToLower() = ".fs")
+    let (|ScriptFile|_|)     = iff (fun (f:string) -> IO.Path.GetExtension(f).ToLower() = ".fsx")
+    let (|Library|_|)        = iff (fun (f:string) -> IO.Path.GetExtension(f).ToLower() = ".dll")
     let (|IsRefParam|_|)     = iff (fun (p:ParameterInfo) -> p.ParameterType.IsByRef)
     let (|IsGenericParam|_|) = iff (fun (p:ParameterInfo) -> p.ParameterType.IsGenericType)
     let (|IsStaticProp|_|)   = iff (fun (p:PropertyInfo) -> p.GetGetMethod().IsStatic )
@@ -261,7 +262,7 @@ module Curry =
             | Library path -> 
                 query { for t in Assembly.LoadFrom(path).GetTypes() do
                         groupBy t.Namespace into g
-                        select g.Key } |> Seq.toList
+                        select (if g.Key = null then "NO_NAMESPACE" else g.Key) } |> Seq.toList
             | from' -> [ from' ]
         let generate config = 
             let generation = Generate.namespace' config
@@ -277,18 +278,21 @@ module Curry =
                 |> String.concat "\r\n"
                 |> function | "" -> "" | txt -> txt + (String.replicate 3 "\r\n")
             | from' -> ""
-        let write out = function
+        let write referencesText typesText = function
             | SourceFile file ->
-                    System.IO.File.WriteAllText (file, out)
+                    System.IO.File.WriteAllText (file, typesText)
                     sprintf "Curried output written to: %s" file
-            | _ -> out
+            | ScriptFile file ->
+                    System.IO.File.WriteAllText (file, referencesText + typesText)
+                    sprintf "Curried output written to: %s" file
+            | _ -> typesText
 
     /// Generates curryable wrappers from the provided configuration
     let up' (config:Config) = 
         let namespaces = load config.From
         let typesText = namespaces |> generate config
         let referencesText = generateReferences config.From
-        write (referencesText + typesText) config.To
+        write referencesText typesText config.To
 
     /// Generates curryable wrappers to the provided location from a given library path or namespace/type name
     let up (to':string) (from':string) = up' { DefaultConfig with To = to'; From = from' }
