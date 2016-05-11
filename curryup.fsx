@@ -53,10 +53,10 @@ module Shared =
     let fullName type' = (type':Type).FullName
     let methName = function | IsConstructor _ -> "new" | m -> m.Name |> lcaseFirstLetter
     let naughtyNames = [| "val"; "yield"; "use"; "type"; "to"; "then"; "select"; "rec"; 
-                        "open"; "or"; "namespace"; "module"; "match"; "inline"; "inherit";
+                        "open"; "namespace"; "module"; "match"; "inline"; "inherit";
                         "function"; "func"; "params"; "end"; "done"; "begin"; "assert"; 
                         "and"; "or"; "not"; "with" |]
-    let isNaughty name = naughtyNames |> Array .contains name
+    let isNaughty name = naughtyNames |> Array.contains name
     let cleanName name = if name |> isNaughty then tick name else name
     let overloadName escapeName (prevOrig,prevName) name = 
         if name = prevOrig then prevName |> escapeName  else name |> cleanName
@@ -71,13 +71,13 @@ module private Type' =
 
     [<AutoOpen>] 
     module private shh =
-        let complianceAttributes (m:MethodInfo) = m.GetCustomAttributes<System.CLSCompliantAttribute>() |> Seq.toList
-        let isClsCompliant (m:MethodInfo) =
+        let complianceAttributes m = (m:MethodInfo).GetCustomAttributes<System.CLSCompliantAttribute>() |> Seq.toList
+        let isClsCompliant m =
             match m |> complianceAttributes with
-            | [] -> true
+            | []   -> true
             | atts -> atts |> List.fold (fun acc a -> acc && a.IsCompliant) true
-        let getMethods (t:Type) = t.GetMethods() |> Array.filter isClsCompliant
-        let isGetterOrSetter (m:MethodBase) = m.Name.StartsWith("get_") || m.Name.StartsWith("set_")
+        let getMethods t = (t:Type).GetMethods() |> Array.filter isClsCompliant
+        let isGetterOrSetter m = (m:MethodBase).Name.StartsWith("get_") || m.Name.StartsWith("set_")
         let isMethod = not << isGetterOrSetter
         let noProps = List.filter isMethod
         let toMethodBase = Seq.cast<MethodBase>
@@ -85,7 +85,7 @@ module private Type' =
         let sortByName = Seq.sortBy methName >> Seq.toList
         let allMethods = typeMethods >> sortByName
         let methods = allMethods >> noProps
-        let customEscape escape (methods: MethodBase list) =
+        let customEscape escape methods =
             let overload = nameOverloads escape methName
             methods |> List.fold overload overloadAcc |> snd
         let escapeNames (config:Config) = customEscape config.NameOverload
@@ -138,16 +138,14 @@ module private Generate =
     module private generic =
 
         let typeDef = function | t when (t:Type).IsGenericType -> t.GetGenericTypeDefinition() | t -> t
-        let genericArgs (t:Type) = t.GetGenericArguments()
-        let typeArgs (t:Type) = 
-            t 
-            |> (typeDef >> genericArgs)
+        let args t = (t:Type).GetGenericArguments()
+        let paramConstraints t = (t:Type).GetGenericParameterConstraints()
+        let typeArgs t = 
+            (t:Type) 
+            |> (typeDef >> args)
             |> Seq.map (name >> tickEscape)
             |> String.concat ","
-        let typeContraints (t:Type) =
-            t.GetGenericTypeDefinition()
-             .GetGenericArguments()
-            |> Array.map (fun a -> a.GetGenericParameterConstraints())
+        let typeContraints t = (t:Type) |> (typeDef >> args) |> Array.map paramConstraints
         let typeNameWithContraints t (name:string) = 
             let constraints = ""
             let array = if (name.EndsWith("[]")) then "[]" else "" 
