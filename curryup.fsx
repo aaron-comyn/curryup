@@ -266,6 +266,17 @@ module Curry =
         let generate config = 
             let generation = Generate.namespace' config
             (List.map generation) >> String.concat ""
+        let formatReference = 
+            IO.Path.GetFileName >> sprintf """#r "%s" """
+        let generateReferences = function
+            | Library path -> 
+                Assembly.LoadFrom(path).GetReferencedAssemblies()                 
+                |> Array.map (fun referencedAssembly -> referencedAssembly.FullName) 
+                |> Array.distinct
+                |> Array.map formatReference
+                |> String.concat "\r\n"
+                |> function | "" -> "" | txt -> txt + (String.replicate 3 "\r\n")
+            | from' -> ""
         let write out = function
             | SourceFile file ->
                     System.IO.File.WriteAllText (file, out)
@@ -275,8 +286,9 @@ module Curry =
     /// Generates curryable wrappers from the provided configuration
     let up' (config:Config) = 
         let namespaces = load config.From
-        let out = namespaces |> generate config
-        write out config.To
+        let typesText = namespaces |> generate config
+        let referencesText = generateReferences config.From
+        write (referencesText + typesText) config.To
 
     /// Generates curryable wrappers to the provided location from a given library path or namespace/type name
     let up (to':string) (from':string) = up' { DefaultConfig with To = to'; From = from' }
